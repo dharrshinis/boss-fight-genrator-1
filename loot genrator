@@ -1,0 +1,109 @@
+"""
+loot_generator.py
+
+Android Development Workflow Support:
+This tool configures drop table configurations (item pools, rarities, weights) for chest
+and monster drops in RogueMind Arena. Manually tweaking probabilities directly in Android code
+risks introducing game-breaking bugs or unexpected loot distribution. By isolating this
+configuration in a JSON file, and using this script to run statistical simulations,
+developers can test adjustments instantly. The generated `loot_table.json` is exported for
+seamless consumption in the Android app.
+"""
+
+import json
+import random
+from pathlib import Path
+
+# Define relative directories using pathlib
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = PROJECT_ROOT / "dev_tools" / "output"
+OUTPUT_FILE = OUTPUT_DIR / "loot_table.json"
+
+# Drop rates definition (weights do not have to sum to 100)
+RARITY_WEIGHTS = {
+    "COMMON": 70.0,
+    "RARE": 24.0,
+    "LEGENDARY": 6.0
+}
+
+LOOT_POOL = {
+    "COMMON": [
+        {"id": "nano_medkit_small", "name": "Small Nano Medkit", "value": 20, "effect": "HEAL"},
+        {"id": "shield_battery_small", "name": "Basic Shield Pack", "value": 15, "effect": "SHIELD_REGEN"},
+        {"id": "power_cell_basic", "name": "Basic Overdrive Module", "value": 3, "effect": "DAMAGE_BUFF"}
+    ],
+    "RARE": [
+        {"id": "nano_medkit_medium", "name": "Medium Nano Medkit", "value": 45, "effect": "HEAL"},
+        {"id": "power_cell_rare", "name": "Advanced Overdrive Module", "value": 8, "effect": "DAMAGE_BUFF"},
+        {"id": "speed_injector_rare", "name": "Reflex Boost Injector", "value": 12, "effect": "SPEED_BUFF"}
+    ],
+    "LEGENDARY": [
+        {"id": "hyper_injector_legendary", "name": "Legendary Hyper Injector", "value": 100, "effect": "HEAL"},
+        {"id": "plasma_core_legendary", "name": "V-Series Plasma Core", "value": 20, "effect": "DAMAGE_BUFF"},
+        {"id": "respawn_matrix_legendary", "name": "Revival Reconstruction Matrix", "value": 1, "effect": "REVIVE"}
+    ]
+}
+
+def simulate_drops(iterations: int = 10000) -> dict:
+    """Simulates rolling random loot a high number of times to calculate actual drop percentages."""
+    rarities = list(RARITY_WEIGHTS.keys())
+    weights = list(RARITY_WEIGHTS.values())
+    
+    results = {"COMMON": 0, "RARE": 0, "LEGENDARY": 0}
+    specific_item_results = {}
+    
+    for _ in range(iterations):
+        # Choose a rarity tier based on defined weights
+        selected_rarity = random.choices(rarities, weights=weights, k=1)[0]
+        results[selected_rarity] += 1
+        
+        # Choose a random item from the chosen tier
+        selected_item = random.choice(LOOT_POOL[selected_rarity])
+        item_id = selected_item["id"]
+        specific_item_results[item_id] = specific_item_results.get(item_id, 0) + 1
+        
+    return {
+        "rarityDistribution": results,
+        "itemDistribution": specific_item_results
+    }
+
+def main():
+    print("🚀 RogueMind Arena - Loot Table Generator & Simulator starting...")
+    
+    # Bundle the table for export
+    full_table = {
+        "metadata": {
+            "creator": "Antigravity-Loot-Engine",
+            "rarityRatios": RARITY_WEIGHTS
+        },
+        "lootPool": LOOT_POOL
+    }
+    
+    # Ensure output folder exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Export the loot table configuration
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(full_table, f, indent=2)
+    print(f"✅ Loot table configuration saved to: {OUTPUT_FILE}")
+    
+    # Run the simulation to check probabilities
+    sim_count = 10000
+    print(f"\n🧪 Running drop simulation ({sim_count} rolls)...")
+    sim_data = simulate_drops(sim_count)
+    
+    # Print out results
+    print("\n📊 Rarity Distribution Results:")
+    for rarity, count in sim_data["rarityDistribution"].items():
+        percentage = (count / sim_count) * 100
+        target = RARITY_WEIGHTS[rarity]
+        print(f"   - {rarity:<10}: {percentage:>6.2f}% (Target: {target:>4.1f}%)")
+        
+    print("\n📦 Specific Item Drop Count Samples (Top 5):")
+    sorted_items = sorted(sim_data["itemDistribution"].items(), key=lambda x: x[1], reverse=True)
+    for item_id, count in sorted_items[:5]:
+        percentage = (count / sim_count) * 100
+        print(f"   - {item_id:<30}: {count:>4} hits ({percentage:>5.2f}%)")
+
+if __name__ == "__main__":
+    main()
