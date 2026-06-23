@@ -1,0 +1,106 @@
+"""
+stage_generator.py
+
+Android Development Workflow Support:
+Instead of hardcoding level structures in Java/Kotlin or editing massive JSON files manually,
+this script allows developers and designers to dynamically generate stage structures
+with progressive difficulty scaling. The generated JSON output is formatted to match the
+game's Kotlin serialization layout and can be loaded directly from the Android app's
+`assets/` folder at runtime.
+"""
+
+import json
+import random
+from pathlib import Path
+
+# Define relative directories using pathlib
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = PROJECT_ROOT / "dev_tools" / "output"
+OUTPUT_FILE = OUTPUT_DIR / "stages.json"
+
+# Enemy pools for difficulty scaling
+BASIC_ENEMIES = ["soldier_basic", "drone_scout"]
+ELITE_ENEMIES = ["soldier_elite", "mech_defender"]
+BOSS_ENEMIES = ["rogue_core_overmind", "plasma_titan", "nebula_phantom"]
+
+def generate_wave(wave_index: int, stage_difficulty: int) -> dict:
+    """Generates configuration for a single wave of enemies."""
+    wave_id = f"wave_{wave_index}"
+    
+    # Calculate spawn count based on wave index and difficulty
+    spawn_count = int(3 + (wave_index * 1.5) + (stage_difficulty * 0.8))
+    
+    # Determine enemy pool composition based on wave progression
+    enemies_to_spawn = []
+    for _ in range(spawn_count):
+        roll = random.random()
+        if wave_index == 3 and roll > 0.5:
+            # Harder enemies in final wave
+            enemies_to_spawn.append(random.choice(ELITE_ENEMIES))
+        elif roll > 0.8:
+            enemies_to_spawn.append(random.choice(ELITE_ENEMIES))
+        else:
+            enemies_to_spawn.append(random.choice(BASIC_ENEMIES))
+            
+    return {
+        "waveId": wave_id,
+        "spawnDelayMs": max(1000, 3000 - (wave_index * 200)),
+        "spawnIntervalMs": max(500, 1500 - (stage_difficulty * 50)),
+        "enemies": enemies_to_spawn,
+        "maxOnScreen": 5 + (stage_difficulty // 2)
+    }
+
+def generate_stage(stage_num: int) -> dict:
+    """Generates a complete stage configuration containing multiple waves."""
+    # Scale difficulty rating linearly
+    difficulty_rating = stage_num * 1.2
+    
+    # 3 waves per standard stage, boss fight on stage 5/10/15 etc.
+    is_boss_stage = (stage_num % 5 == 0)
+    waves = []
+    
+    if is_boss_stage:
+        # Boss stage has a single wave with the boss and few escorts
+        boss_name = BOSS_ENEMIES[(stage_num // 5 - 1) % len(BOSS_ENEMIES)]
+        waves.append({
+            "waveId": "boss_wave",
+            "spawnDelayMs": 2000,
+            "spawnIntervalMs": 1000,
+            "enemies": [boss_name] + [random.choice(ELITE_ENEMIES) for _ in range(2)],
+            "maxOnScreen": 3
+        })
+    else:
+        # Standard stage has 3 waves
+        for wave_idx in range(1, 4):
+            waves.append(generate_wave(wave_idx, stage_num))
+            
+    return {
+        "stageNumber": stage_num,
+        "stageName": f"Sector {stage_num}: Core Entrance" if is_boss_stage else f"Sector {stage_num}: Corridors",
+        "difficultyRating": round(difficulty_rating, 2),
+        "isBossStage": is_boss_stage,
+        "waves": waves,
+        "environmentTheme": "cyber_vault" if stage_num > 5 else "rusted_hulls"
+    }
+
+def main():
+    print("🚀 RogueMind Arena - Level Data Stage Generator starting...")
+    stages = []
+    
+    # Generate a campaign of 10 stages
+    for stage_num in range(1, 11):
+        stage_data = generate_stage(stage_num)
+        stages.append(stage_data)
+        print(f"   Generated Stage {stage_num} (Waves: {len(stage_data['waves'])}, Boss: {stage_data['isBossStage']})")
+        
+    # Ensure output directory exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Write to target JSON file
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(stages, f, indent=2)
+        
+    print(f"\n✅ Level generation complete! Exported {len(stages)} stages to: {OUTPUT_FILE}")
+
+if __name__ == "__main__":
+    main()
