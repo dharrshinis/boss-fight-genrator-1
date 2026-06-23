@@ -1,0 +1,105 @@
+"""
+balance_tool.py
+
+Android Development Workflow Support:
+RPG balancing is notoriously tricky. Changing variables in source files makes it hard to verify
+the long-term impact on scaling. This utility simulates player leveling curves and boss
+stat progression up to Level 50. It prints a diagnostic progression report to help designers
+tweak equations, and exports a `balance_config.json` file which the Android engine loads
+to set base stat calculations at run-time.
+"""
+
+import json
+import math
+from pathlib import Path
+
+# Define relative directories using pathlib
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = PROJECT_ROOT / "dev_tools" / "output"
+OUTPUT_FILE = OUTPUT_DIR / "balance_config.json"
+
+def calculate_player_stats(level: int) -> dict:
+    """Calculates player attributes for a specific level using mathematical scaling."""
+    # Scale XP required for next level exponentially
+    xp_to_next = int(100 * math.pow(1.15, level - 1))
+    
+    # Scale max health linearly with a small exponential factor
+    max_health = int(100 + (level * 18) + (level * level * 0.2))
+    
+    # Scale damage power linearly
+    attack_power = int(15 + (level * 3.5))
+    
+    # Scale armor percentage slowly
+    defense = int(level * 0.8)
+    
+    return {
+        "level": level,
+        "xpRequired": xp_to_next,
+        "maxHealth": max_health,
+        "attackPower": attack_power,
+        "defense": defense
+    }
+
+def calculate_boss_stats(stage: int) -> dict:
+    """Calculates scaling attributes for bosses appearing in specific stages."""
+    # Boss difficulty escalates rapidly as stages advance
+    health = int(200 * math.pow(1.12, stage) + (stage * 30))
+    attack_power = int(25 * math.pow(1.08, stage) + (stage * 2))
+    defense = int(stage * 1.5)
+    
+    return {
+        "stage": stage,
+        "health": health,
+        "attackPower": attack_power,
+        "defense": defense,
+        "xpReward": int(50 * math.pow(1.14, stage))
+    }
+
+def main():
+    print("🚀 RogueMind Arena - Game Balance Tool starting...")
+    
+    player_curves = []
+    boss_curves = []
+    
+    # Generate level progression up to 50
+    for lvl in range(1, 51):
+        player_curves.append(calculate_player_stats(lvl))
+        
+    # Generate boss scaling progression for 10 key stages
+    for stg in range(1, 11):
+        boss_curves.append(calculate_boss_stats(stg))
+        
+    # Compile the balance table configuration
+    balance_config = {
+        "metadata": {
+            "version": "1.0.4",
+            "maxPlayerLevel": 50,
+            "scalingAlgorithm": "exponential_1.15"
+        },
+        "playerLevelData": player_curves,
+        "bossStageData": boss_curves
+    }
+    
+    # Ensure output folder exists
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    
+    # Save compilation to JSON
+    with open(OUTPUT_FILE, "w", encoding="utf-8") as f:
+        json.dump(balance_config, f, indent=2)
+        
+    print(f"✅ Balance config exported to: {OUTPUT_FILE}")
+    
+    # Print a helpful diagnostic summary comparison for designers
+    print("\n📊 PROGRESSION DIAGNOSTICS:")
+    print(f"{'Level':<6} | {'XP Required':<12} | {'Player HP':<10} | {'Player ATK':<10} | {'Boss HP (Stage)':<16} | {'Boss ATK':<8}")
+    print("-" * 75)
+    for index in [0, 4, 9, 19, 29, 39, 49]:
+        p = player_curves[index]
+        # Map levels to stages for comparison (level 1-5 maps to stage 1, level 10 to stage 2, etc.)
+        stage_num = (p['level'] // 5) + 1
+        b = boss_curves[min(stage_num - 1, 9)]
+        
+        print(f"{p['level']:<6} | {p['xpRequired']:<12} | {p['maxHealth']:<10} | {p['attackPower']:<10} | {b['health']:<11} ({stage_num:<2}) | {b['attackPower']:<8}")
+
+if __name__ == "__main__":
+    main()
