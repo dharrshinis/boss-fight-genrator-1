@@ -1,0 +1,98 @@
+"""
+asset_processor.py
+
+Android Development Workflow Support:
+This tool automates the asset import pipeline for the Android game. When artists deliver
+high-resolution source sprites (PNG/JPG), this script batches them, resizes them based on
+standard Android screen density ratios, and converts them to optimized WebP format to reduce
+the final APK file size. It outputs the structured assets ready to be copied into the
+Android project's `app/src/main/res/` folder.
+
+Densities processed:
+- mdpi: 1.0x (base size, scaled to e.g. 128px)
+- hdpi: 1.5x (192px)
+- xhdpi: 2.0x (256px)
+- xxhdpi: 3.0x (384px)
+- xxxhdpi: 4.0x (512px)
+"""
+
+import os
+from pathlib import Path
+from PIL import Image
+
+# Define relative directories using pathlib
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+INPUT_DIR = PROJECT_ROOT  # Scan root folder for source images
+OUTPUT_DIR = PROJECT_ROOT / "dev_tools" / "output" / "res"
+
+# Multipliers and target names for Android density folders
+DENSITIES = {
+    "drawable-mdpi": 128,
+    "drawable-hdpi": 192,
+    "drawable-xhdpi": 256,
+    "drawable-xxhdpi": 384,
+    "drawable-xxxhdpi": 512,
+}
+
+def process_image(img_path: Path):
+    """Processes a single image file, resizing it for each density and converting to WebP."""
+    print(f"\n🎨 Processing asset: {img_path.name}")
+    try:
+        with Image.open(img_path) as img:
+            # Keep aspect ratio while resizing
+            original_width, original_height = img.size
+            aspect_ratio = original_width / original_height
+            
+            for folder_name, target_size in DENSITIES.items():
+                # Calculate height based on target width and aspect ratio
+                target_width = target_size
+                target_height = int(target_width / aspect_ratio)
+                
+                # Create output density folder if it doesn't exist
+                density_folder = OUTPUT_DIR / folder_name
+                density_folder.mkdir(parents=True, exist_ok=True)
+                
+                # Perform the resize using LANCZOS filter for high quality
+                resized_img = img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+                
+                # Define output path (convert extension to .webp)
+                output_filename = img_path.stem + ".webp"
+                output_path = density_folder / output_filename
+                
+                # Save as optimized WebP (lossless/lossy depends on UI requirements)
+                resized_img.save(output_path, "WEBP", quality=85)
+                print(f"   Saved to {folder_name}/ (dimensions: {target_width}x{target_height})")
+                
+    except Exception as e:
+        print(f"❌ Error processing {img_path.name}: {e}")
+
+def main():
+    print("🚀 RogueMind Arena - Asset Processing Pipeline tool starting...")
+    
+    # We look for source PNGs (such as soldier3.png, boss3.png, arena3.png)
+    supported_extensions = {".png", ".jpg", ".jpeg"}
+    found_assets = False
+    
+    # Scan both root directory and res/drawable
+    search_paths = [INPUT_DIR, PROJECT_ROOT / "app" / "src" / "main" / "res" / "drawable"]
+    
+    for search_path in search_paths:
+        if not search_path.exists():
+            continue
+        for file_path in search_path.iterdir():
+            if file_path.is_file() and file_path.suffix.lower() in supported_extensions:
+                # Skip hidden files
+                if file_path.name.startswith('.'):
+                    continue
+                # Limit to main raw PNG game assets to avoid reprocessing output/dist directories
+                if "3" in file_path.stem or "image_2" in file_path.stem:
+                    process_image(file_path)
+                    found_assets = True
+                
+    if not found_assets:
+        print("⚠️ No source assets found. Please make sure soldier3.png, boss3.png, etc. are in the root or res/drawable directory.")
+    else:
+        print(f"\n✅ Asset processing complete! Files exported to: {OUTPUT_DIR}")
+
+if __name__ == "__main__":
+    main()
